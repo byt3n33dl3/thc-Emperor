@@ -1,8 +1,8 @@
-<h1 align="center">E M P E R O R</h1>
-<a href="http://netty.io/"></a>
+<h1 align="center">E M P E R O R
+<a href="http://netty.io/"></a></h1>
 
 <h1 align="center">
-  <a href=https://github.com/byt3n33dl3/thc-Emperor><img src="emp.webp" alt="Emperor" width="280px">
+  <a href=https://github.com/byt3n33dl3/thc-Emperor><img src="emp.png" alt="Emperor" width="280px">
   <br>
 </h1>
 
@@ -14,7 +14,7 @@
 
 ## Native Fork for [Netty](https://github.com/netty/netty)
 
-See [our wiki page](http://netty.io/wiki/forked-tomcat-native.html).
+See our [wiki page](http://netty.io/wiki/forked-tomcat-native.html).
 
 # Usage 
 
@@ -50,4 +50,4 @@ are listed below:
  * `io.netty.transport.udt`
 
 ## Automatic Modules 
-do not provide any means to declare dependencies, so you need to list each used module separately in your `module-info` file.
+do not provide any means to declare dependencies, so you need to list each used module separately in your module `info` file.
