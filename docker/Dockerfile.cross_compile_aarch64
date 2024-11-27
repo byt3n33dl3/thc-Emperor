@@ -1,0 +1,83 @@
+FROM --platform=linux/amd64 centos:7.6.1810
+
+ARG gcc_version=10.2-2020.11
+ARG openssl_version=1_1_1d
+ARG apr_version=1.7.5
+ENV SOURCE_DIR /root/source
+ENV GCC_VERSION $gcc_version
+ENV OPENSSL_VERSION $openssl_version
+ENV MAVEN_VERSION 3.9.1
+ENV APR_VERSION $apr_version
+ENV CMAKE_VERSION_BASE 3.26
+ENV CMAKE_VERSION $CMAKE_VERSION_BASE.4
+
+RUN mkdir $SOURCE_DIR
+WORKDIR $SOURCE_DIR
+
+# Update to use the vault
+RUN sed -i -e 's/^mirrorlist/#mirrorlist/g' -e 's/^#baseurl=http:\/\/mirror.centos.org\/centos\/$releasever\//baseurl=https:\/\/linuxsoft.cern.ch\/centos-vault\/\/7.6.1810\//g' /etc/yum.repos.d/CentOS-Base.repo
+
+# We want to have git 2.x for the maven scm plugin and also for boringssl
+RUN yum install -y http://opensource.wandisco.com/centos/6/git/x86_64/wandisco-git-release-6-1.noarch.rpm
+
+# Install requirements
+RUN  set -x && \
+  yum -y install epel-release && \
+  yum -y install wget tar git make autoconf automake libtool openssl-devel ninja-build gcc-c++ patch unzip zip which
+
+# Install Java
+RUN yum install -y java-1.8.0-openjdk-devel golang
+ENV JAVA_HOME="/usr/lib/jvm/java-1.8.0-openjdk/"
+
+# Install aarch64 gcc 10.2 toolchain
+RUN set -x && \
+  wget https://developer.arm.com/-/media/Files/downloads/gnu-a/$GCC_VERSION/binrel/gcc-arm-$GCC_VERSION-x86_64-aarch64-none-linux-gnu.tar.xz && \
+  tar xvf gcc-arm-$GCC_VERSION-x86_64-aarch64-none-linux-gnu.tar.xz && \
+  mv gcc-arm-$GCC_VERSION-x86_64-aarch64-none-linux-gnu /
+ENV PATH="/gcc-arm-$GCC_VERSION-x86_64-aarch64-none-linux-gnu/bin:${PATH}"
+
+# Cross compile Apache Apr for aarch64 - share
+RUN set -x && \
+  wget --no-check-certificate https://downloads.apache.org//apr/apr-$APR_VERSION.tar.gz && \
+  tar xvf apr-$APR_VERSION.tar.gz && \
+  pushd apr-$APR_VERSION && \
+  CC=aarch64-none-linux-gnu-gcc CFLAGS='-O3 -fno-omit-frame-pointer -fPIC' ./configure --prefix=/opt/apr-$APR_VERSION-share --host=aarch64-none-linux-gnu ac_cv_have_decl_sys_siglist=no ac_cv_file__dev_zero=yes ac_cv_func_setpgrp_void=yes apr_cv_tcp_nodelay_with_cork=yes ac_cv_sizeof_struct_iovec=8 && \
+  make || true && \
+  pushd tools && \
+  gcc -Wall -O2 -DCROSS_COMPILE gen_test_char.c -s -o gen_test_char && \
+  popd && \
+  make && make install && \
+  popd
+
+# Cross compile OpenSSL for aarch64 - share
+RUN set -x && \
+  wget https://github.com/openssl/openssl/archive/OpenSSL_$OPENSSL_VERSION.tar.gz && \
+  tar xvf OpenSSL_$OPENSSL_VERSION.tar.gz && \
+  pushd openssl-OpenSSL_$OPENSSL_VERSION && \
+  ./Configure linux-aarch64 --cross-compile-prefix=aarch64-none-linux-gnu- --prefix=/opt/openssl-$OPENSSL_VERSION-share shared && \
+  make && make install && \
+  popd
+
+# Install cmake
+RUN curl -s https://cmake.org/files/v$CMAKE_VERSION_BASE/cmake-$CMAKE_VERSION-linux-x86_64.tar.gz --output cmake-$CMAKE_VERSION-linux-x86_64.tar.gz && tar zvxf cmake-$CMAKE_VERSION-linux-x86_64.tar.gz && mv cmake-$CMAKE_VERSION-linux-x86_64 /opt/ && echo 'PATH=/opt/cmake-$CMAKE_VERSION-linux-x86_64/bin:$PATH' >> ~/.bashrc
+
+# Downloading and installing SDKMAN!
+RUN curl -s "https://get.sdkman.io" | bash
+
+# Don't check the certificates as our curl version is too old.
+RUN echo 'sdkman_insecure_ssl=true' >> $HOME/.sdkman/etc/config
+
+# Installing Java and Maven, removing some unnecessary SDKMAN files
+RUN bash -c "source $HOME/.sdkman/bin/sdkman-init.sh && \
+    yes | sdk install maven $MAVEN_VERSION && \
+    rm -rf $HOME/.sdkman/archives/* && \
+    rm -rf $HOME/.sdkman/tmp/*"
+
+# Prepare our own build
+ENV PATH /root/.sdkman/candidates/maven/current:$PATH
+
+
+# Cleanup
+RUN rm -rf $SOURCE_DIR
+RUN yum clean all && \
+    rm -rf /var/cache/yum
